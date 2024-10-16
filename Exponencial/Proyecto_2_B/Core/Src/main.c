@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,10 +58,10 @@ TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
 
-float t_a = 0;
-float t_d = 0;
+float r_a = 0;
+float r_d = 0;
 float v_s = 0;
-float t_r = 0;
+float r_r = 0;
 uint16_t adcValues[4];
 
 etapas_t etapas = off;
@@ -79,6 +79,8 @@ float env = 0;
 int flag = 0;
 float pendiente_d = 0;
 
+float aux = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -89,7 +91,7 @@ static void MX_ADC1_Init(void);
 static void MX_DAC1_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-float generador_rectas(float, float);
+float generador_exp(float tau, float ini, char c);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -150,27 +152,27 @@ int main(void)
 	  {
 	  case attack:
 
-		  float pendiente_a = 3.3/t_a;
-		  b_a = 0;
+		  float tau_a = (2.2e-6)*r_a;
 
-		  if(flag == 1 && Gate == 1 )
+		  if(flag == 1 && Gate == 1)
 		  {
-			  env = generador_rectas(pendiente_a, b_a);
+			  env = generador_exp(tau_a, 0, 'a');
 
 			  if(env >= 3.3)
 			  {
-				  x=0;
 				  etapas = decay;
+				  x = 0;
+				  aux = env;
 			  }
 			  else
 			  {
-				  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, env*4095/3.3);
 				  flag = 0;
+				  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, env*4095/3.3);
 			  }
 		  }
 		  if(flag == 1 && Gate == 0)
 		  {
-			  x=0;
+			  x = 0;
 			  v_s = env;
 			  etapas = release;
 		  }
@@ -178,12 +180,11 @@ int main(void)
 		  break;
 	  case decay:
 
-		  float pendiente_d = (v_s - 3.3)/t_d;
-		  b_d = v_s - pendiente_d * t_d;
+		  float tau_d = (2.2e-6)*r_d;
 
-		  if(flag == 1 && Gate == 1)
+		  if(flag == 1)
 		  {
-			  env = generador_rectas(pendiente_d, b_d);
+			  env = generador_exp(tau_d, aux ,'d');
 
 			  if(env <= v_s)
 			  {
@@ -198,7 +199,7 @@ int main(void)
 		  }
 		  if(flag == 1 && Gate == 0)
 		  {
-			  x=0;
+			  x = 0;
 			  v_s = env;
 			  etapas = release;
 		  }
@@ -206,31 +207,28 @@ int main(void)
 		  break;
 	  case sustain:
 
-		  if(flag == 1)
+		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, env*4095/3.3);
+
+		  if(Gate == 0)
 		  {
-			  if(Gate == 0)
-			  {
-				  etapas = release;
-				  x = 0;
-			  }
-			  else
-			  {
-				  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, env*4095/3.3);
-				  flag = 0;
-			  }
+			  etapas = release;
+			  x = 0;
+		  }
+		  else
+		  {
+			  etapas = sustain;
 		  }
 
 		  break;
 	  case release:
 
-		  float pendiente_r = (0 - v_s)/t_r;
-		  b_r = - pendiente_r * t_r;
+		  float tau_r = (2.2e-6)*r_r;
 
 		  if(flag == 1)
 		  {
-			  env = generador_rectas(pendiente_r, b_r);
+			  env = generador_exp(tau_r, v_s, 'r');
 
-			  if(env <=0)
+			  if(env <= 0.05)
 			  {
 				  etapas = off;
 				  x = 0;
@@ -241,6 +239,7 @@ int main(void)
 				  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, env*4095/3.3);
 			  }
 		  }
+
 		  break;
 	  case off:
 
@@ -256,7 +255,7 @@ int main(void)
 
 		  break;
 	  }
-  }
+	}
   /* USER CODE END 3 */
 }
 
@@ -457,9 +456,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 80-1;
+  htim1.Init.Prescaler = 72-1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 2000-1;
+  htim1.Init.Period = 20-1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -541,10 +540,17 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-float generador_rectas(float m, float b)
+float generador_exp(float tau, float ini, char c)
 {
 
-	y = m*x+b;
+	if(c == 'a')
+	{
+		y = 4.95*(1-exp(-(1/tau)*x));
+	}
+	else
+	{
+		y = ini*exp(-(1/tau)*(x));
+	}
 
 	//x += 20e-6;
 
@@ -579,7 +585,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (htim->Instance == TIM1)
     {
     	flag = 1;
-        x += 0.002;
+        x += 20e-6;
     }
 }
 
@@ -587,17 +593,21 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
     if (hadc->Instance == ADC1)
     {
-        t_a = adcValues[0]*(2.6/4095);  // attack
-        t_d = adcValues[1]*(7.7/4095);  // decay
-        if(t_d <= 0.4)
+        r_a = adcValues[0]*(800000.0/4095);  // attack
+        if(r_a <= 100.0)
         {
-        	t_d = 0.4;
+        	r_a = 100.0;
+        }
+        r_d = adcValues[1]*(800000.0/4095);  // decay
+        if(r_d <= 100.0)
+        {
+        	r_d = 100.0;
         }
         v_s = adcValues[2]*(3.3/4095);  // sustain
-        t_r = adcValues[3]*(11.0/4095);  // Release
-        if(t_r <= 0.4)
+        r_r = adcValues[3]*(800000.0/4095);  // Release
+        if(r_r <= 100.0)
         {
-        	t_r = 0.7;
+        	r_r = 100.0;
         }
     }
 }
