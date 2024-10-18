@@ -79,8 +79,6 @@ float env = 0;
 int flag = 0;
 float pendiente_d = 0;
 
-float aux = 0;
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -138,6 +136,8 @@ int main(void)
   	HAL_DAC_Start(&hdac1, DAC_CHANNEL_2);
   	HAL_TIM_Base_Start_IT(&htim1);
 
+  	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -162,7 +162,6 @@ int main(void)
 			  {
 				  etapas = decay;
 				  x = 0;
-				  aux = env;
 			  }
 			  else
 			  {
@@ -184,7 +183,7 @@ int main(void)
 
 		  if(flag == 1)
 		  {
-			  env = generador_exp(tau_d, aux ,'d');
+			  env = generador_exp(tau_d, 3.3 ,'d');
 
 			  if(env <= v_s)
 			  {
@@ -515,7 +514,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PA4 */
   GPIO_InitStruct.Pin = GPIO_PIN_4;
@@ -523,15 +522,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_6;
+  /*Configure GPIO pins : PA6 PA7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -547,12 +546,15 @@ float generador_exp(float tau, float ini, char c)
 	{
 		y = 4.95*(1-exp(-(1/tau)*x));
 	}
+	else if(c == 'd')
+	{
+		y = v_s - (v_s - ini)*exp(-(1/tau)*(x));
+	}
 	else
 	{
 		y = ini*exp(-(1/tau)*(x));
 	}
 
-	//x += 20e-6;
 
 	return y;
 }
@@ -567,7 +569,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == GPIO_PIN_SET)
 		{
 			Gate = 1;
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);    // GATE (A6)
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);  // TRIG (A5)
+			HAL_Delay(10);
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
 		}
 		else
 		{
@@ -593,18 +598,18 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
     if (hadc->Instance == ADC1)
     {
-        r_a = adcValues[0]*(800000.0/4095);  // attack
-        if(r_a <= 100.0)
+        r_a = adcValues[0]*(1400000.0/4095);  // attack
+        if(r_a <= 33100.0)
         {
-        	r_a = 100.0;
+        	r_a = 33100.0;
         }
-        r_d = adcValues[1]*(800000.0/4095);  // decay
-        if(r_d <= 100.0)
+        r_d = adcValues[1]*(1000000.0/4095);  // decay
+        if(r_d <= 20000.0)
         {
-        	r_d = 100.0;
+        	r_d = 20000.0;
         }
         v_s = adcValues[2]*(3.3/4095);  // sustain
-        r_r = adcValues[3]*(800000.0/4095);  // Release
+        r_r = adcValues[3]*(1600000.0/4095);  // Release
         if(r_r <= 100.0)
         {
         	r_r = 100.0;
