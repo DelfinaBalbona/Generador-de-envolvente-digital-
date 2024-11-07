@@ -56,12 +56,12 @@ uint16_t k_a = 0;
 
 float fc = 0.0;
 float k = 0.0;
-float fs = 50000.0;
+float fs = 100000.0;
 float wcd = 0.0;
 float wca = 0.0;
 float g = 0.0;
 float ys = 0.0;
-int flag_filtro = 0.0;
+int flag_filtro = 1;
 float in = 0.0;
 float yd[5];
 
@@ -70,6 +70,8 @@ float c2 = 0;
 float c3 = 0;
 float c4 = 0;
 float cp = 0;
+
+float c_adc = 3.3/4095;
 
 /* USER CODE END PV */
 
@@ -139,11 +141,8 @@ int main(void)
 
 	  if(flag_filtro == 1)
 	  {
-		  flag_filtro = 0;
 
-		  in = adcValues[2]*(3.3/4095);
-
-		  if(fabs(fc_a - adcValues[0]) > 15 || fabs(k_a -adcValues[1]) > 15)
+		  if(fabs(fc_a - adcValues[0]) > 25 || fabs(k_a -adcValues[1]) > 25)
 		  {
 
 			  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 0.0);
@@ -169,38 +168,14 @@ int main(void)
 			  c3 = 4*pow((g-1),3);
 			  c4 = pow((g-1),4);
 			  cp = pow(g,4);
+			  in = adcValues[3]*(3.3/4095);
 		  }
 
-		  yd[0] = in*cp - c1 * yd[1] - c2*yd[2] - yd[3]*c3 - yd[4]*c4 ;
-
-		  ys = yd[0] * (1+k);
-
-		  if(ys < 0.0)
+		  if ( cp != 0.0)
 		  {
-			  ys = 0.0;
+			  flag_filtro = 0;
 		  }
-		  else if(ys > 3.3)
-		  {
-			  ys = 3.3;
-		  }
-
-		  if (!isnan(yd[0]))
-		  {
-			  for(int i = 4; i > 0; i--)
-			  {
-				  yd[i] = yd[i-1];
-			  }
-		  }
-		  else
-		  {
-			  yd[0] = 0.0;
-			  yd[1] = 0.0;
-			  yd[2] = 0.0;
-			  yd[3] = 0.0;
-			  yd[4] = 0.0;
-		  }
-
-		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, ys*4095/3.3);
+		 // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
 	  }
   }
   /* USER CODE END 3 */
@@ -415,7 +390,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 80-1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 20-1;
+  htim1.Init.Period = 10-1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -496,7 +471,43 @@ static void MX_GPIO_Init(void)
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-	flag_filtro = 1;
+
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
+	yd[0] = in*cp - c1 * yd[1] - c2*yd[2] - yd[3]*c3 - yd[4]*c4 ;
+
+	  ys = yd[0] * (1+k);
+
+	  if(ys < 0.0)
+	  {
+		  ys = 0.0;
+	  }
+	  else if(ys > 3.3)
+	  {
+		  ys = 3.3;
+	  }
+
+	  if (!isnan(yd[0]))
+	  {
+		  for(int i = 4; i > 0; i--)
+		  {
+			  yd[i] = yd[i-1];
+		  }
+	  }
+	  else
+	  {
+		  yd[0] = 0.0;
+		  yd[1] = 0.0;
+		  yd[2] = 0.0;
+		  yd[3] = 0.0;
+		  yd[4] = 0.0;
+	  }
+
+	  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, ys/c_adc);
+
+	  in = adcValues[3]*c_adc;
+
+	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
+	//flag_filtro = 1;
 }
 
 
